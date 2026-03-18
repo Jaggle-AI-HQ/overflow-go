@@ -1,0 +1,27 @@
+name: Publish Go SDK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Go SDK
+    runs-on: [self-hosted, jaggle-dev]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test -race ./...
+
+      - name: Verify module
+        run: go vet ./...

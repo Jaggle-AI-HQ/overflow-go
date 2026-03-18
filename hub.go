@@ -1,0 +1,53 @@
+package overflow
+
+// Hub is the central point for managing the SDK client and scope.
+type Hub struct {
+	client *Client
+	scope  *Scope
+}
+
+// NewHub creates a new Hub with the given options.
+func NewHub(options ClientOptions) (*Hub, error) {
+	client, err := NewClient(options)
+	if err != nil {
+		return nil, err
+	}
+	scope := NewScope()
+	return &Hub{client: client, scope: scope}, nil
+}
+
+// Client returns the hub's client.
+func (h *Hub) Client() *Client {
+	return h.client
+}
+
+// Scope returns the hub's scope.
+func (h *Hub) Scope() *Scope {
+	return h.scope
+}
+
+// CaptureException creates an event from an error, applies the scope, and sends it.
+func (h *Hub) CaptureException(err error) string {
+	event := newEvent()
+	event.Level = LevelError
+	event.Message = err.Error()
+	event.Exception = extractException(err)
+	h.scope.applyToEvent(event)
+	h.client.applyOptions(event)
+	return h.client.Send(event)
+}
+
+// CaptureMessage creates a message event, applies the scope, and sends it.
+func (h *Hub) CaptureMessage(msg string, level Level) string {
+	event := newEvent()
+	event.Level = level
+	event.Message = msg
+	h.scope.applyToEvent(event)
+	h.client.applyOptions(event)
+	return h.client.Send(event)
+}
+
+// AddBreadcrumb adds a breadcrumb to the hub's scope.
+func (h *Hub) AddBreadcrumb(breadcrumb *Breadcrumb) {
+	h.scope.AddBreadcrumb(breadcrumb, h.client.options.MaxBreadcrumbs)
+}
