@@ -10,9 +10,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
-    name: Verify Go SDK
+  publish:
+    name: Publish Go SDK
     runs-on: [self-hosted, jaggle-dev]
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -25,3 +27,29 @@ jobs:
 
       - name: Verify module
         run: go vet ./...
+
+      - name: Determine release type
+        id: release_type
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" == *"-"* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        run: |
+          if [ "${{ steps.release_type.outputs.prerelease }}" = "true" ]; then
+            gh release create "${{ steps.release_type.outputs.tag }}" \
+              --title "${{ steps.release_type.outputs.tag }}" \
+              --generate-notes \
+              --prerelease
+          else
+            gh release create "${{ steps.release_type.outputs.tag }}" \
+              --title "${{ steps.release_type.outputs.tag }}" \
+              --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

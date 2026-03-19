@@ -1,5 +1,7 @@
 # overflow-go
 
+[![CI](https://github.com/Jaggle-AI-HQ/overflow-go/actions/workflows/ci.yml/badge.svg)](https://github.com/Jaggle-AI-HQ/overflow-go/actions/workflows/ci.yml)
+
 Official Go SDK for [Overflow](https://github.com/Jaggle-AI-HQ/jaggle-overflow) error tracking.
 
 ## Installation
@@ -106,10 +108,31 @@ overflow.ConfigureScope(func(scope *overflow.Scope) {
 })
 ```
 
-## Version
+## Publishing
 
-Current SDK version: `0.1.0`
+Releases are triggered by pushing a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This runs tests, verifies the module, and creates a GitHub Release with auto-generated notes. Go modules are automatically available via `go get` once the tag is pushed.
+
+For pre-release versions, use a semver pre-release suffix (e.g. `v0.2.0-beta.1`).
+
+## Changelog
+
+See [GitHub Releases](https://github.com/Jaggle-AI-HQ/overflow-go/releases).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ## License
 
-MIT
+[MIT](LICENSE)
