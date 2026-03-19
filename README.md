@@ -3,7 +3,7 @@
 [![CI](https://github.com/Jaggle-AI-HQ/overflow-go/actions/workflows/ci.yml/badge.svg)](https://github.com/Jaggle-AI-HQ/overflow-go/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/Jaggle-AI-HQ/overflow-go)](https://github.com/Jaggle-AI-HQ/overflow-go/releases/latest)
 
-Official Go SDK for [Overflow](https://github.com/Jaggle-AI-HQ/jaggle-overflow) error tracking.
+Go SDK for [Overflow](https://overflow.jaggle.ai) error tracking.
 
 ## Installation
 
