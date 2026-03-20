@@ -88,8 +88,8 @@ func newEventID() string {
 	return uuid.New().String()
 }
 
-// newEvent creates a base event with defaults populated.
-func newEvent() *Event {
+// NewEvent creates a base event with defaults populated.
+func NewEvent() *Event {
 	return &Event{
 		EventID:  newEventID(),
 		Platform: "go",
@@ -101,16 +101,15 @@ func newEvent() *Event {
 	}
 }
 
-// extractException creates structured exception data from a Go error,
+// ExtractException creates structured exception data from a Go error,
 // including a stack trace captured from the calling goroutine.
-func extractException(err error) *ExceptionData {
-	frames := captureStacktrace(3) // skip extractException, CaptureException, public API
+func ExtractException(err error) *ExceptionData {
+	frames := captureStacktrace(3) // skip ExtractException, CaptureException, public API
 
 	typeName := fmt.Sprintf("%T", err)
+
 	// Clean up common Go error type prefixes
-	if strings.HasPrefix(typeName, "*") {
-		typeName = typeName[1:]
-	}
+	typeName = strings.TrimPrefix(typeName, "*")
 
 	return &ExceptionData{
 		Values: []ExceptionValue{

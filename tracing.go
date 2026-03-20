@@ -2,10 +2,11 @@ package overflow
 
 import (
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -48,7 +49,7 @@ type TransactionEnvelope struct {
 
 func generateID(byteLen int) string {
 	b := make([]byte, byteLen)
-	rand.Read(b)
+	cryptorand.Read(b)
 	return hex.EncodeToString(b)
 }
 
@@ -202,8 +203,8 @@ func (t *Transaction) Finish() {
 		Status:         t.status,
 		HTTPMethod:     t.httpMethod,
 		HTTPStatusCode: t.httpStatus,
-		StartTimestamp:  t.startTime.UTC().Format(time.RFC3339Nano),
-		EndTimestamp:    endTime.UTC().Format(time.RFC3339Nano),
+		StartTimestamp: t.startTime.UTC().Format(time.RFC3339Nano),
+		EndTimestamp:   endTime.UTC().Format(time.RFC3339Nano),
 		Platform:       "go",
 		SDK: SDKInfo{
 			Name:    "overflow-go",
@@ -237,9 +238,23 @@ func (t *Transaction) Finish() {
 	}
 }
 
-// StartTransaction creates a new transaction. Call Finish() to send it.
+// StartTransaction creates a new transaction. It applies trace sampling based on
+// TracesSampleRate - if the request is not sampled, it returns nil for the transaction.
+// Call Finish() on the returned transaction (if non-nil) to send it.
 func StartTransaction(ctx context.Context, name, op string) (context.Context, *Transaction) {
 	hub := GetHub()
+
+	// Apply trace sampling
+	if hub != nil {
+		rate := hub.client.options.TracesSampleRate
+		if rate <= 0 {
+			return ctx, nil
+		}
+		if rate < 1.0 && rand.Float64() >= rate {
+			return ctx, nil
+		}
+	}
+
 	txn := &Transaction{
 		traceID:   generateID(16),
 		spanID:    generateID(8),

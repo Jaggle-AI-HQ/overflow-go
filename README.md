@@ -47,18 +47,23 @@ func main() {
 
 ## Configuration
 
-| Option           | Type                  | Default  | Description                          |
-| ---------------- | --------------------- | -------- | ------------------------------------ |
-| `DSN`            | `string`              | required | Project DSN from Overflow            |
-| `Environment`    | `string`              | `""`     | Environment name (e.g. `production`) |
-| `Release`        | `string`              | `""`     | Release version (e.g. `myapp@1.0.0`) |
-| `ServerName`     | `string`              | `""`     | Server identifier                    |
-| `SampleRate`     | `float64`             | `1.0`    | Event sampling rate (0.0 - 1.0)      |
-| `MaxBreadcrumbs` | `int`                 | `100`    | Max breadcrumbs to retain            |
-| `BeforeSend`     | `func(*Event) *Event` | `nil`    | Hook to modify/drop events           |
-| `Debug`          | `bool`                | `false`  | Enable debug logging                 |
+| Option             | Type                  | Default | Description                               |
+| ------------------ | --------------------- | ------- | ----------------------------------------- |
+| `DSN`              | `string`              | `""`    | Project DSN from Overflow (empty = no-op) |
+| `Environment`      | `string`              | `""`    | Environment name (e.g. `production`)      |
+| `Release`          | `string`              | `""`    | Release version (e.g. `myapp@1.0.0`)      |
+| `ServerName`       | `string`              | `""`    | Server identifier                         |
+| `SampleRate`       | `float64`             | `1.0`   | Event sampling rate (0.0 - 1.0)           |
+| `TracesSampleRate` | `float64`             | `0`     | Transaction sampling rate (0.0 - 1.0)     |
+| `MaxBreadcrumbs`   | `int`                 | `100`   | Max breadcrumbs to retain                 |
+| `BeforeSend`       | `func(*Event) *Event` | `nil`   | Hook to modify/drop events                |
+| `Debug`            | `bool`                | `false` | Enable debug logging                      |
+
+When `DSN` is empty, the SDK initializes in no-op mode — all capture calls silently succeed without sending data. This is useful for local development where Overflow is intentionally disabled.
 
 ## Panic Recovery
+
+Use `Recover` in a top-level defer to capture panics and send them before the process exits:
 
 ```go
 func main() {
@@ -69,7 +74,20 @@ func main() {
 }
 ```
 
+In middleware, use `RecoverWithRepanic` instead — it captures the panic and then re-panics so the framework's recovery handler can send the HTTP response:
+
+```go
+func myMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        defer overflow.RecoverWithRepanic()
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
 ## HTTP Middleware
+
+### net/http
 
 ```go
 mux := http.NewServeMux()
@@ -77,7 +95,35 @@ mux.HandleFunc("/", handler)
 http.ListenAndServe(":8080", overflow.HTTPMiddleware()(mux))
 ```
 
-The middleware captures panics in HTTP handlers, enriches events with request data, and adds request breadcrumbs.
+The middleware captures panics in HTTP handlers, enriches events with request data, and adds request breadcrumbs. When `TracesSampleRate > 0`, it also creates performance transactions.
+
+### Gin
+
+Install the Gin middleware subpackage:
+
+```bash
+go get github.com/Jaggle-AI-HQ/overflow-go/ginoverflow
+```
+
+```go
+import (
+    overflow "github.com/Jaggle-AI-HQ/overflow-go"
+    "github.com/Jaggle-AI-HQ/overflow-go/ginoverflow"
+)
+
+func main() {
+    overflow.Init(overflow.ClientOptions{
+        DSN:              "https://<public-key>@your-host.com/api/ingest",
+        TracesSampleRate: 1.0,
+    })
+
+    r := gin.Default()
+    r.Use(ginoverflow.Middleware())
+    r.Run()
+}
+```
+
+The Gin middleware provides the same functionality as `HTTPMiddleware` — panic capture with request context, breadcrumbs, and performance transactions — with no boilerplate.
 
 ## Scopes & Context
 
@@ -89,6 +135,11 @@ overflow.ConfigureScope(func(scope *overflow.Scope) {
         "id":    "user-123",
         "email": "user@example.com",
     })
+})
+
+// Attach HTTP request context to enrich all events on this scope
+overflow.ConfigureScope(func(scope *overflow.Scope) {
+    scope.SetRequest(r)
 })
 
 // Add breadcrumbs

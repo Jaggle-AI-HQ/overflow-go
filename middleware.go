@@ -2,7 +2,6 @@ package overflow
 
 import (
 	"fmt"
-	"math/rand"
 	"net/http"
 	"time"
 )
@@ -43,18 +42,14 @@ func HTTPMiddleware() func(http.Handler) http.Handler {
 				})
 			}
 
-			// Start a transaction if tracing is enabled
-			var txn *Transaction
+			// Start a transaction if tracing is enabled (sampling is handled by StartTransaction)
 			ctx := r.Context()
-			if hub != nil && hub.client.options.TracesSampleRate > 0 {
-				rate := hub.client.options.TracesSampleRate
-				if rate >= 1.0 || rand.Float64() < rate {
-					name := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
-					ctx, txn = StartTransaction(ctx, name, "http.server")
-					txn.httpMethod = r.Method
-					txn.SetTag("http.method", r.Method)
-					txn.SetTag("http.url", r.URL.Path)
-				}
+			name := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
+			ctx, txn := StartTransaction(ctx, name, "http.server")
+			if txn != nil {
+				txn.httpMethod = r.Method
+				txn.SetTag("http.method", r.Method)
+				txn.SetTag("http.url", r.URL.Path)
 			}
 
 			sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
@@ -70,14 +65,14 @@ func HTTPMiddleware() func(http.Handler) http.Handler {
 							err = fmt.Errorf("%v", v)
 						}
 
-						event := newEvent()
+						event := NewEvent()
 						event.Level = LevelFatal
 						event.Message = err.Error()
-						event.Exception = extractException(err)
+						event.Exception = ExtractException(err)
 						event.Request = map[string]any{
 							"method":  r.Method,
 							"url":     r.URL.String(),
-							"headers": flattenHeaders(r.Header),
+							"headers": FlattenHeaders(r.Header),
 						}
 						hub.Scope().applyToEvent(event)
 						hub.Client().applyOptions(event)
@@ -106,7 +101,7 @@ func HTTPMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-func flattenHeaders(h http.Header) map[string]string {
+func FlattenHeaders(h http.Header) map[string]string {
 	out := make(map[string]string, len(h))
 	for k, v := range h {
 		if len(v) > 0 {
