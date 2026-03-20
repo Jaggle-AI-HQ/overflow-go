@@ -56,7 +56,7 @@ func Middleware() gin.HandlerFunc {
 					default:
 						err = fmt.Errorf("%v", v)
 					}
-					hub.CaptureExceptionWithRequest(err, c.Request)
+					hub.CaptureExceptionWithRequest(err, c.Request, overflow.LevelError)
 					hub.Client().Flush(2 * time.Second)
 				}
 

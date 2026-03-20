@@ -18,7 +18,7 @@ func TestScopeSetTag(t *testing.T) {
 	s.SetTag("key", "value")
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if event.Tags["key"] != "value" {
 		t.Errorf("tag key = %q, want %q", event.Tags["key"], "value")
@@ -30,7 +30,7 @@ func TestScopeSetContext(t *testing.T) {
 	s.SetContext("device", map[string]any{"os": "linux"})
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	ctx, ok := event.Contexts["device"].(map[string]any)
 	if !ok {
@@ -46,7 +46,7 @@ func TestScopeSetUser(t *testing.T) {
 	s.SetUser(map[string]any{"id": "42", "email": "test@example.com"})
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if event.User["id"] != "42" {
 		t.Errorf("user id = %v", event.User["id"])
@@ -61,7 +61,7 @@ func TestScopeSetFingerprint(t *testing.T) {
 	s.SetFingerprint([]string{"custom-group"})
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if len(event.Fingerprint) != 1 || event.Fingerprint[0] != "custom-group" {
 		t.Errorf("fingerprint = %v", event.Fingerprint)
@@ -75,7 +75,7 @@ func TestScopeSetRequest(t *testing.T) {
 	s.SetRequest(req)
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if event.Request == nil {
 		t.Fatal("request should not be nil")
@@ -94,7 +94,7 @@ func TestScopeAddBreadcrumb(t *testing.T) {
 	s.AddBreadcrumb(&Breadcrumb{Message: "second"}, 100)
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if len(event.Breadcrumbs) != 2 {
 		t.Fatalf("expected 2 breadcrumbs, got %d", len(event.Breadcrumbs))
@@ -111,7 +111,7 @@ func TestScopeAddBreadcrumbMaxLimit(t *testing.T) {
 	}
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if len(event.Breadcrumbs) != 3 {
 		t.Fatalf("expected 3 breadcrumbs (max), got %d", len(event.Breadcrumbs))
@@ -126,7 +126,7 @@ func TestScopeAddBreadcrumbDefaultMax(t *testing.T) {
 	}
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if len(event.Breadcrumbs) != 100 {
 		t.Fatalf("expected 100 breadcrumbs (default max), got %d", len(event.Breadcrumbs))
@@ -146,7 +146,7 @@ func TestScopeClear(t *testing.T) {
 	s.Clear()
 
 	event := &Event{}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if len(event.Tags) != 0 {
 		t.Error("tags should be empty after clear")
@@ -181,7 +181,7 @@ func TestScopeDoesNotOverrideExistingEventData(t *testing.T) {
 		User:        map[string]any{"id": "event-user"},
 		Fingerprint: []string{"event-fp"},
 	}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if event.Tags["key"] != "event-value" {
 		t.Error("scope should not override existing event tags")
@@ -204,7 +204,7 @@ func TestScopeBreadcrumbsPrependedToEvent(t *testing.T) {
 	event := &Event{
 		Breadcrumbs: []Breadcrumb{{Message: "event-bc"}},
 	}
-	s.applyToEvent(event)
+	s.ApplyToEvent(event)
 
 	if len(event.Breadcrumbs) != 2 {
 		t.Fatalf("expected 2 breadcrumbs, got %d", len(event.Breadcrumbs))
@@ -228,7 +228,7 @@ func TestScopeConcurrentAccess(t *testing.T) {
 			s.SetTag("key", "value")
 			s.AddBreadcrumb(&Breadcrumb{Message: "bc"}, 100)
 			event := &Event{}
-			s.applyToEvent(event)
+			s.ApplyToEvent(event)
 		}(i)
 	}
 

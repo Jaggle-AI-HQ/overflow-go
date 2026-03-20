@@ -189,7 +189,7 @@ func TestClientApplyOptions(t *testing.T) {
 	})
 
 	event := NewEvent()
-	client.applyOptions(event)
+	client.ApplyOptions(event)
 
 	if event.Environment != "production" {
 		t.Errorf("Environment = %q, want %q", event.Environment, "production")
@@ -213,7 +213,7 @@ func TestClientApplyOptionsDoesNotOverride(t *testing.T) {
 	event := NewEvent()
 	event.Environment = "staging"
 	event.Release = "v2.0.0"
-	client.applyOptions(event)
+	client.ApplyOptions(event)
 
 	if event.Environment != "staging" {
 		t.Errorf("Environment should not be overridden, got %q", event.Environment)

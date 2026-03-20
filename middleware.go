@@ -74,8 +74,8 @@ func HTTPMiddleware() func(http.Handler) http.Handler {
 							"url":     r.URL.String(),
 							"headers": FlattenHeaders(r.Header),
 						}
-						hub.Scope().applyToEvent(event)
-						hub.Client().applyOptions(event)
+						hub.Scope().ApplyToEvent(event)
+						hub.Client().ApplyOptions(event)
 						hub.Client().Send(event)
 						hub.Client().Flush(2 * time.Second)
 					}

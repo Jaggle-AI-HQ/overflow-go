@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 var globalHub *Hub
 
@@ -92,12 +92,13 @@ func CaptureMessage(msg string, level Level) string {
 }
 
 // CaptureExceptionWithRequest captures an error with HTTP request context and sends it to Overflow.
-func CaptureExceptionWithRequest(err error, r *http.Request) string {
+// The level parameter controls the event severity (e.g. LevelWarning for 4xx, LevelError for 5xx).
+func CaptureExceptionWithRequest(err error, r *http.Request, level Level) string {
 	hub := GetHub()
 	if hub == nil {
 		return ""
 	}
-	return hub.CaptureExceptionWithRequest(err, r)
+	return hub.CaptureExceptionWithRequest(err, r, level)
 }
 
 // AddBreadcrumb adds a breadcrumb to the current scope.
