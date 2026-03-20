@@ -3,7 +3,7 @@ module github.com/Jaggle-AI-HQ/overflow-go/ginoverflow
 go 1.24
 
 require (
-	github.com/Jaggle-AI-HQ/overflow-go v0.1.0
+	github.com/Jaggle-AI-HQ/overflow-go v0.3.0
 	github.com/gin-gonic/gin v1.10.0
 )
 
