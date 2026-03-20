@@ -65,7 +65,7 @@ func TestHubCaptureExceptionWithRequest(t *testing.T) {
 
 	req, _ := http.NewRequest("POST", "http://example.com/api/test", nil)
 	req.Header.Set("Content-Type", "application/json")
-	id := hub.CaptureExceptionWithRequest(errors.New("request error"), req)
+	id := hub.CaptureExceptionWithRequest(errors.New("request error"), req, LevelError)
 
 	if id == "" {
 		t.Fatal("expected event ID")
@@ -86,6 +86,22 @@ func TestHubCaptureExceptionWithRequest(t *testing.T) {
 	}
 	if headers["Content-Type"] != "application/json" {
 		t.Errorf("Content-Type header = %q", headers["Content-Type"])
+	}
+}
+
+func TestHubCaptureExceptionWithRequestLevel(t *testing.T) {
+	mt := &mockTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+	})
+
+	req, _ := http.NewRequest("GET", "http://example.com/missing", nil)
+	hub.CaptureExceptionWithRequest(errors.New("not found"), req, LevelWarning)
+
+	ev := mt.events[0]
+	if ev.Level != LevelWarning {
+		t.Errorf("level = %q, want %q", ev.Level, LevelWarning)
 	}
 }
 

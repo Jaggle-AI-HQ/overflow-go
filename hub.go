@@ -34,16 +34,18 @@ func (h *Hub) CaptureException(err error) string {
 	event.Level = LevelError
 	event.Message = err.Error()
 	event.Exception = ExtractException(err)
-	h.scope.applyToEvent(event)
-	h.client.applyOptions(event)
+	h.scope.ApplyToEvent(event)
+	h.client.ApplyOptions(event)
 	return h.client.Send(event)
 }
 
 // CaptureExceptionWithRequest creates an event from an error, attaches HTTP request
 // context (method, URL, headers), applies the scope, and sends it.
-func (h *Hub) CaptureExceptionWithRequest(err error, r *http.Request) string {
+// The level parameter controls the event severity (e.g. LevelWarning for 4xx,
+// LevelError for 5xx).
+func (h *Hub) CaptureExceptionWithRequest(err error, r *http.Request, level Level) string {
 	event := NewEvent()
-	event.Level = LevelError
+	event.Level = level
 	event.Message = err.Error()
 	event.Exception = ExtractException(err)
 	event.Request = map[string]any{
@@ -51,8 +53,8 @@ func (h *Hub) CaptureExceptionWithRequest(err error, r *http.Request) string {
 		"url":     r.URL.String(),
 		"headers": FlattenHeaders(r.Header),
 	}
-	h.scope.applyToEvent(event)
-	h.client.applyOptions(event)
+	h.scope.ApplyToEvent(event)
+	h.client.ApplyOptions(event)
 	return h.client.Send(event)
 }
 
@@ -61,8 +63,8 @@ func (h *Hub) CaptureMessage(msg string, level Level) string {
 	event := NewEvent()
 	event.Level = level
 	event.Message = msg
-	h.scope.applyToEvent(event)
-	h.client.applyOptions(event)
+	h.scope.ApplyToEvent(event)
+	h.client.ApplyOptions(event)
 	return h.client.Send(event)
 }
 

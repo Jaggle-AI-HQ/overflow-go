@@ -85,8 +85,8 @@ func (s *Scope) Clear() {
 	s.request = nil
 }
 
-// applyToEvent merges scope data into the event.
-func (s *Scope) applyToEvent(event *Event) {
+// ApplyToEvent merges scope data into the event.
+func (s *Scope) ApplyToEvent(event *Event) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

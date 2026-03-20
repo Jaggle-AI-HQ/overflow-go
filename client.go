@@ -83,8 +83,8 @@ func (c *Client) Options() ClientOptions {
 	return c.options
 }
 
-// applyOptions sets client-level fields on the event.
-func (c *Client) applyOptions(event *Event) {
+// ApplyOptions sets client-level fields on the event.
+func (c *Client) ApplyOptions(event *Event) {
 	if c.options.Environment != "" && event.Environment == "" {
 		event.Environment = c.options.Environment
 	}

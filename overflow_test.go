@@ -121,7 +121,7 @@ func TestCaptureMessageWithoutInit(t *testing.T) {
 func TestCaptureExceptionWithRequestWithoutInit(t *testing.T) {
 	globalHub = nil
 	req, _ := http.NewRequest("GET", "http://example.com", nil)
-	id := CaptureExceptionWithRequest(errors.New("test"), req)
+	id := CaptureExceptionWithRequest(errors.New("test"), req, LevelError)
 	if id != "" {
 		t.Errorf("expected empty string, got %q", id)
 	}
