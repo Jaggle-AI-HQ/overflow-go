@@ -19,17 +19,14 @@ package overflow
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
-	"sync"
 	"time"
 )
 
 const Version = "0.1.0"
 
-var (
-	globalHub     *Hub
-	globalHubOnce sync.Once
-)
+var globalHub *Hub
 
 // ClientOptions configures the Overflow SDK.
 type ClientOptions struct {
@@ -94,6 +91,15 @@ func CaptureMessage(msg string, level Level) string {
 	return hub.CaptureMessage(msg, level)
 }
 
+// CaptureExceptionWithRequest captures an error with HTTP request context and sends it to Overflow.
+func CaptureExceptionWithRequest(err error, r *http.Request) string {
+	hub := GetHub()
+	if hub == nil {
+		return ""
+	}
+	return hub.CaptureExceptionWithRequest(err, r)
+}
+
 // AddBreadcrumb adds a breadcrumb to the current scope.
 func AddBreadcrumb(breadcrumb *Breadcrumb) {
 	hub := GetHub()
@@ -140,6 +146,28 @@ func Recover() {
 		}
 		hub.CaptureException(err)
 		hub.Client().Flush(2 * time.Second)
+	}
+}
+
+// RecoverWithRepanic captures a panic value, sends it as an event, and then
+// re-panics so the framework's recovery handler can respond. Use in middleware:
+//
+//	defer overflow.RecoverWithRepanic()
+func RecoverWithRepanic() {
+	if r := recover(); r != nil {
+		hub := GetHub()
+		if hub != nil {
+			var err error
+			switch v := r.(type) {
+			case error:
+				err = v
+			default:
+				err = fmt.Errorf("%v", v)
+			}
+			hub.CaptureException(err)
+			hub.Client().Flush(2 * time.Second)
+		}
+		panic(r)
 	}
 }
 

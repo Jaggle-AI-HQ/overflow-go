@@ -1,6 +1,9 @@
 package overflow
 
-import "sync"
+import (
+	"net/http"
+	"sync"
+)
 
 // Scope holds contextual data that is applied to all events.
 type Scope struct {
@@ -10,6 +13,7 @@ type Scope struct {
 	user        map[string]any
 	fingerprint []string
 	breadcrumbs []Breadcrumb
+	request     *http.Request
 }
 
 // NewScope returns an empty scope.
@@ -41,6 +45,14 @@ func (s *Scope) SetUser(user map[string]any) {
 	s.user = user
 }
 
+// SetRequest associates an HTTP request with the scope. All events captured
+// on this scope will include request context (method, URL, headers).
+func (s *Scope) SetRequest(r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.request = r
+}
+
 // SetFingerprint overrides the automatic fingerprint grouping.
 func (s *Scope) SetFingerprint(fingerprint []string) {
 	s.mu.Lock()
@@ -70,6 +82,7 @@ func (s *Scope) Clear() {
 	s.user = nil
 	s.fingerprint = nil
 	s.breadcrumbs = nil
+	s.request = nil
 }
 
 // applyToEvent merges scope data into the event.
@@ -109,5 +122,13 @@ func (s *Scope) applyToEvent(event *Event) {
 
 	if len(s.breadcrumbs) > 0 {
 		event.Breadcrumbs = append(s.breadcrumbs, event.Breadcrumbs...)
+	}
+
+	if s.request != nil && event.Request == nil {
+		event.Request = map[string]any{
+			"method":  s.request.Method,
+			"url":     s.request.URL.String(),
+			"headers": FlattenHeaders(s.request.Header),
+		}
 	}
 }
