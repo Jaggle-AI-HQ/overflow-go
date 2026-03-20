@@ -18,7 +18,7 @@ type Transport interface {
 // noopTransport silently drops all events. Used when DSN is empty.
 type noopTransport struct{}
 
-func (t *noopTransport) Send(event *Event) {}
+func (t *noopTransport) Send(event *Event)                {}
 func (t *noopTransport) Flush(timeout time.Duration) bool { return true }
 
 // HTTPTransport sends events via HTTP POST to the Overflow ingestion API.
