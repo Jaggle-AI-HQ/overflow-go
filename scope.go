@@ -10,7 +10,7 @@ type Scope struct {
 	mu          sync.RWMutex
 	tags        map[string]string
 	contexts    map[string]any
-	user        map[string]any
+	user        User
 	fingerprint []string
 	breadcrumbs []Breadcrumb
 	request     *http.Request
@@ -39,7 +39,7 @@ func (s *Scope) SetContext(key string, value any) {
 }
 
 // SetUser sets user information on the scope.
-func (s *Scope) SetUser(user map[string]any) {
+func (s *Scope) SetUser(user User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.user = user
@@ -79,7 +79,7 @@ func (s *Scope) Clear() {
 	defer s.mu.Unlock()
 	s.tags = make(map[string]string)
 	s.contexts = make(map[string]any)
-	s.user = nil
+	s.user = User{}
 	s.fingerprint = nil
 	s.breadcrumbs = nil
 	s.request = nil
@@ -112,8 +112,8 @@ func (s *Scope) ApplyToEvent(event *Event) {
 		}
 	}
 
-	if s.user != nil && event.User == nil {
-		event.User = s.user
+	if !s.user.IsEmpty() && event.User == nil {
+		event.User = &s.user
 	}
 
 	if len(s.fingerprint) > 0 && len(event.Fingerprint) == 0 {

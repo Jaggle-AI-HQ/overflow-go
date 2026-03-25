@@ -60,6 +60,18 @@ type ClientOptions struct {
 
 	// TracesSampleRate controls the percentage of transactions captured (0.0 to 1.0). Default: 0 (disabled).
 	TracesSampleRate float64
+
+	// User sets the default user context applied to all events.
+	// Can be overridden per-event via ConfigureScope.
+	User User
+
+	// Tags sets default tags applied to all events.
+	// Can be overridden per-event via ConfigureScope.
+	Tags map[string]string
+
+	// Contexts sets default context objects applied to all events.
+	// Can be overridden per-event via ConfigureScope.
+	Contexts map[string]any
 }
 
 // Init initializes the global Overflow SDK client.

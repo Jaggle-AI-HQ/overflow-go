@@ -15,6 +15,18 @@ func NewHub(options ClientOptions) (*Hub, error) {
 		return nil, err
 	}
 	scope := NewScope()
+
+	// Apply initial defaults from ClientOptions to scope.
+	if !options.User.IsEmpty() {
+		scope.SetUser(options.User)
+	}
+	for k, v := range options.Tags {
+		scope.SetTag(k, v)
+	}
+	for k, v := range options.Contexts {
+		scope.SetContext(k, v)
+	}
+
 	return &Hub{client: client, scope: scope}, nil
 }
 

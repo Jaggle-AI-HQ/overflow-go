@@ -33,7 +33,7 @@ type Event struct {
 	Tags        map[string]string `json:"tags,omitempty"`
 	Breadcrumbs []Breadcrumb      `json:"breadcrumbs,omitempty"`
 	Request     map[string]any    `json:"request,omitempty"`
-	User        map[string]any    `json:"user,omitempty"`
+	User        *User             `json:"user,omitempty"`
 	SDK         SDKInfo           `json:"sdk,omitempty"`
 	Environment string            `json:"environment,omitempty"`
 	Release     string            `json:"release,omitempty"`
@@ -75,6 +75,21 @@ type Breadcrumb struct {
 	Data      map[string]any `json:"data,omitempty"`
 	Level     string         `json:"level,omitempty"`
 	Timestamp time.Time      `json:"timestamp,omitempty"`
+}
+
+// User identifies the user associated with an event.
+// The backend uses these fields (in priority order) for impact tracking:
+// ID > Email > IPAddress > Username.
+type User struct {
+	ID        string `json:"id,omitempty"`
+	Email     string `json:"email,omitempty"`
+	IPAddress string `json:"ip_address,omitempty"`
+	Username  string `json:"username,omitempty"`
+}
+
+// IsEmpty reports whether all user fields are zero-valued.
+func (u User) IsEmpty() bool {
+	return u.ID == "" && u.Email == "" && u.IPAddress == "" && u.Username == ""
 }
 
 // SDKInfo identifies the SDK sending the event.

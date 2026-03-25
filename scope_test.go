@@ -43,16 +43,19 @@ func TestScopeSetContext(t *testing.T) {
 
 func TestScopeSetUser(t *testing.T) {
 	s := NewScope()
-	s.SetUser(map[string]any{"id": "42", "email": "test@example.com"})
+	s.SetUser(User{ID: "42", Email: "test@example.com"})
 
 	event := &Event{}
 	s.ApplyToEvent(event)
 
-	if event.User["id"] != "42" {
-		t.Errorf("user id = %v", event.User["id"])
+	if event.User == nil {
+		t.Fatal("user should not be nil")
 	}
-	if event.User["email"] != "test@example.com" {
-		t.Errorf("user email = %v", event.User["email"])
+	if event.User.ID != "42" {
+		t.Errorf("user id = %v", event.User.ID)
+	}
+	if event.User.Email != "test@example.com" {
+		t.Errorf("user email = %v", event.User.Email)
 	}
 }
 
@@ -137,7 +140,7 @@ func TestScopeClear(t *testing.T) {
 	s := NewScope()
 	s.SetTag("key", "value")
 	s.SetContext("ctx", "data")
-	s.SetUser(map[string]any{"id": "1"})
+	s.SetUser(User{ID: "1"})
 	s.SetFingerprint([]string{"fp"})
 	s.AddBreadcrumb(&Breadcrumb{Message: "bc"}, 100)
 	req, _ := http.NewRequest("GET", "http://example.com", nil)
@@ -155,7 +158,7 @@ func TestScopeClear(t *testing.T) {
 		t.Error("contexts should be empty after clear")
 	}
 	if event.User != nil {
-		t.Error("user should be nil after clear")
+		t.Error("user should not be applied after clear")
 	}
 	if len(event.Fingerprint) != 0 {
 		t.Error("fingerprint should be empty after clear")
@@ -172,13 +175,13 @@ func TestScopeDoesNotOverrideExistingEventData(t *testing.T) {
 	s := NewScope()
 	s.SetTag("key", "scope-value")
 	s.SetContext("ctx", "scope-data")
-	s.SetUser(map[string]any{"id": "scope-user"})
+	s.SetUser(User{ID: "scope-user"})
 	s.SetFingerprint([]string{"scope-fp"})
 
 	event := &Event{
 		Tags:        map[string]string{"key": "event-value"},
 		Contexts:    map[string]any{"ctx": "event-data"},
-		User:        map[string]any{"id": "event-user"},
+		User:        &User{ID: "event-user"},
 		Fingerprint: []string{"event-fp"},
 	}
 	s.ApplyToEvent(event)
@@ -189,7 +192,7 @@ func TestScopeDoesNotOverrideExistingEventData(t *testing.T) {
 	if event.Contexts["ctx"] != "event-data" {
 		t.Error("scope should not override existing event contexts")
 	}
-	if event.User["id"] != "event-user" {
+	if event.User.ID != "event-user" {
 		t.Error("scope should not override existing event user")
 	}
 	if event.Fingerprint[0] != "event-fp" {

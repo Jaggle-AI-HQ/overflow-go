@@ -47,17 +47,20 @@ func main() {
 
 ## Configuration
 
-| Option             | Type                  | Default | Description                               |
-| ------------------ | --------------------- | ------- | ----------------------------------------- |
-| `DSN`              | `string`              | `""`    | Project DSN from Overflow (empty = no-op) |
-| `Environment`      | `string`              | `""`    | Environment name (e.g. `production`)      |
-| `Release`          | `string`              | `""`    | Release version (e.g. `myapp@1.0.0`)      |
-| `ServerName`       | `string`              | `""`    | Server identifier                         |
-| `SampleRate`       | `float64`             | `1.0`   | Event sampling rate (0.0 - 1.0)           |
-| `TracesSampleRate` | `float64`             | `0`     | Transaction sampling rate (0.0 - 1.0)     |
-| `MaxBreadcrumbs`   | `int`                 | `100`   | Max breadcrumbs to retain                 |
-| `BeforeSend`       | `func(*Event) *Event` | `nil`   | Hook to modify/drop events                |
-| `Debug`            | `bool`                | `false` | Enable debug logging                      |
+| Option             | Type                  | Default  | Description                               |
+| ------------------ | --------------------- | -------- | ----------------------------------------- |
+| `DSN`              | `string`              | `""`     | Project DSN from Overflow (empty = no-op) |
+| `Environment`      | `string`              | `""`     | Environment name (e.g. `production`)      |
+| `Release`          | `string`              | `""`     | Release version (e.g. `myapp@1.0.0`)      |
+| `ServerName`       | `string`              | `""`     | Server identifier                         |
+| `SampleRate`       | `float64`             | `1.0`    | Event sampling rate (0.0 - 1.0)           |
+| `TracesSampleRate` | `float64`             | `0`      | Transaction sampling rate (0.0 - 1.0)     |
+| `MaxBreadcrumbs`   | `int`                 | `100`    | Max breadcrumbs to retain                 |
+| `BeforeSend`       | `func(*Event) *Event` | `nil`    | Hook to modify/drop events                |
+| `Debug`            | `bool`                | `false`  | Enable debug logging                      |
+| `User`             | `User`                | `User{}` | Default user context for all events       |
+| `Tags`             | `map[string]string`   | `nil`    | Default tags applied to all events        |
+| `Contexts`         | `map[string]any`      | `nil`    | Default context objects for all events    |
 
 When `DSN` is empty, the SDK initializes in no-op mode — all capture calls silently succeed without sending data. This is useful for local development where Overflow is intentionally disabled.
 
@@ -131,9 +134,9 @@ The Gin middleware provides the same functionality as `HTTPMiddleware` — panic
 // Set tags on all future events
 overflow.ConfigureScope(func(scope *overflow.Scope) {
     scope.SetTag("component", "payments")
-    scope.SetUser(map[string]any{
-        "id":    "user-123",
-        "email": "user@example.com",
+    scope.SetUser(overflow.User{
+        ID:    "user-123",
+        Email: "user@example.com",
     })
 })
 

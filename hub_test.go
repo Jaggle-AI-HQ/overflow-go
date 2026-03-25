@@ -171,3 +171,87 @@ func TestHubAppliesOptionsToEvents(t *testing.T) {
 		t.Errorf("ServerName = %q", ev.ServerName)
 	}
 }
+
+func TestHubAppliesUserFromOptions(t *testing.T) {
+	mt := &mockTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+		User:      User{ID: "u-1", Email: "alice@example.com"},
+	})
+
+	hub.CaptureMessage("test", LevelInfo)
+	ev := mt.events[0]
+
+	if ev.User == nil {
+		t.Fatal("User should not be nil")
+	}
+	if ev.User.ID != "u-1" {
+		t.Errorf("User.ID = %q, want %q", ev.User.ID, "u-1")
+	}
+	if ev.User.Email != "alice@example.com" {
+		t.Errorf("User.Email = %q", ev.User.Email)
+	}
+}
+
+func TestHubAppliesTagsFromOptions(t *testing.T) {
+	mt := &mockTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+		Tags:      map[string]string{"service": "api", "region": "us-east"},
+	})
+
+	hub.CaptureMessage("test", LevelInfo)
+	ev := mt.events[0]
+
+	if ev.Tags["service"] != "api" {
+		t.Errorf("Tags[service] = %q", ev.Tags["service"])
+	}
+	if ev.Tags["region"] != "us-east" {
+		t.Errorf("Tags[region] = %q", ev.Tags["region"])
+	}
+}
+
+func TestHubAppliesContextsFromOptions(t *testing.T) {
+	mt := &mockTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+		Contexts:  map[string]any{"device": map[string]any{"arch": "arm64"}},
+	})
+
+	hub.CaptureMessage("test", LevelInfo)
+	ev := mt.events[0]
+
+	ctx, ok := ev.Contexts["device"].(map[string]any)
+	if !ok {
+		t.Fatal("device context should be set")
+	}
+	if ctx["arch"] != "arm64" {
+		t.Errorf("arch = %v", ctx["arch"])
+	}
+}
+
+func TestHubOptionDefaultsOverriddenByScope(t *testing.T) {
+	mt := &mockTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+		User:      User{ID: "default-user"},
+		Tags:      map[string]string{"env": "default"},
+	})
+
+	hub.Scope().SetUser(User{ID: "override-user"})
+	hub.Scope().SetTag("env", "override")
+
+	hub.CaptureMessage("test", LevelInfo)
+	ev := mt.events[0]
+
+	if ev.User == nil || ev.User.ID != "override-user" {
+		t.Errorf("User should be overridden, got %v", ev.User)
+	}
+	if ev.Tags["env"] != "override" {
+		t.Errorf("Tags[env] = %q, want %q", ev.Tags["env"], "override")
+	}
+}

@@ -218,7 +218,7 @@ func TestConfigureScopeIntegration(t *testing.T) {
 
 	ConfigureScope(func(scope *Scope) {
 		scope.SetTag("env", "test")
-		scope.SetUser(map[string]any{"id": "user-1"})
+		scope.SetUser(User{ID: "user-1"})
 	})
 
 	CaptureMessage("with scope", LevelInfo)
@@ -230,7 +230,7 @@ func TestConfigureScopeIntegration(t *testing.T) {
 	if ev.Tags["env"] != "test" {
 		t.Errorf("tag env = %q, want %q", ev.Tags["env"], "test")
 	}
-	if ev.User["id"] != "user-1" {
-		t.Errorf("user id = %v", ev.User["id"])
+	if ev.User == nil || ev.User.ID != "user-1" {
+		t.Errorf("user id = %v", ev.User)
 	}
 }
