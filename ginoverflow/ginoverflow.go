@@ -15,12 +15,18 @@ import (
 
 // Middleware returns a Gin middleware that captures panics, adds HTTP breadcrumbs,
 // and creates performance transactions (when tracing is enabled).
+//
+// Each request gets its own clone of the global hub, stored on the request
+// context; read it with overflow.GetHubFromContext(c.Request.Context()).
 func Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hub := overflow.GetHub()
 
 		// Add HTTP breadcrumb
 		if hub != nil {
+			hub = hub.Clone()
+			c.Request = c.Request.WithContext(overflow.SetHubOnContext(c.Request.Context(), hub))
+
 			hub.AddBreadcrumb(&overflow.Breadcrumb{
 				Type:     "http",
 				Category: "request",
@@ -33,7 +39,7 @@ func Middleware() gin.HandlerFunc {
 				Timestamp: time.Now(),
 			})
 
-			// Attach request to scope so all events get request context
+			// Attach request to the request's scope so its events get request context
 			hub.Scope().SetRequest(c.Request)
 		}
 
@@ -56,8 +62,9 @@ func Middleware() gin.HandlerFunc {
 					default:
 						err = fmt.Errorf("%v", v)
 					}
+					// Queued for the transport's worker; the server keeps
+					// running, so the request does not wait for delivery.
 					hub.CaptureExceptionWithRequest(err, c.Request, overflow.LevelError)
-					hub.Client().Flush(2 * time.Second)
 				}
 
 				if txn != nil {

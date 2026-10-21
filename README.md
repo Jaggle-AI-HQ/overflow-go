@@ -130,6 +130,9 @@ The Gin middleware provides the same functionality as `HTTPMiddleware` — panic
 
 ## Scopes & Context
 
+`ConfigureScope` changes the global scope, which every event shares. Use it for
+process-wide data. For request data, use the request's own hub (below).
+
 ```go
 // Set tags on all future events
 overflow.ConfigureScope(func(scope *overflow.Scope) {
@@ -140,11 +143,6 @@ overflow.ConfigureScope(func(scope *overflow.Scope) {
     })
 })
 
-// Attach HTTP request context to enrich all events on this scope
-overflow.ConfigureScope(func(scope *overflow.Scope) {
-    scope.SetRequest(r)
-})
-
 // Add breadcrumbs
 overflow.AddBreadcrumb(&overflow.Breadcrumb{
     Category: "auth",
@@ -152,6 +150,30 @@ overflow.AddBreadcrumb(&overflow.Breadcrumb{
     Level:    "info",
 })
 ```
+
+### Per-request hub
+
+`HTTPMiddleware` and `ginoverflow.Middleware` give each request its own clone of
+the global hub and store it on the request context. Breadcrumbs, the request and
+anything you set on that hub stay with the request and never reach other
+requests' events.
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    hub := overflow.CurrentHub(r.Context()) // request hub, or the global hub outside the middleware
+    hub.Scope().SetUser(overflow.User{ID: "user-123"})
+    hub.CaptureException(err)
+}
+```
+
+In Gin, use `overflow.CurrentHub(c.Request.Context())`.
+
+## Delivery
+
+Events and transactions are queued (256 each) and sent by background workers;
+when a queue is full, new items are dropped rather than blocking the caller.
+The middlewares do not wait for delivery after a panic. Call `overflow.Flush`
+before the process exits to wait for queued items.
 
 ## Custom Fingerprinting
 

@@ -1,6 +1,7 @@
 package overflow
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
@@ -253,5 +254,32 @@ func TestHubOptionDefaultsOverriddenByScope(t *testing.T) {
 	}
 	if ev.Tags["env"] != "override" {
 		t.Errorf("Tags[env] = %q, want %q", ev.Tags["env"], "override")
+	}
+}
+
+func TestHubContextHelpers(t *testing.T) {
+	globalHub = nil
+	t.Cleanup(func() { globalHub = nil })
+
+	if GetHubFromContext(context.Background()) != nil {
+		t.Error("empty context should have no hub")
+	}
+	if CurrentHub(context.Background()) != nil {
+		t.Error("CurrentHub without a global hub should be nil")
+	}
+
+	global, _ := NewHub(ClientOptions{DSN: "https://k@localhost:9999/api/ingest", Transport: &mockTransport{}})
+	globalHub = global
+	if CurrentHub(context.Background()) != global {
+		t.Error("CurrentHub should fall back to the global hub")
+	}
+
+	clone := global.Clone()
+	if clone == global || clone.Client() != global.Client() || clone.Scope() == global.Scope() {
+		t.Error("Clone should share the client and copy the scope")
+	}
+	ctx := SetHubOnContext(context.Background(), clone)
+	if GetHubFromContext(ctx) != clone || CurrentHub(ctx) != clone {
+		t.Error("context hub should win over the global hub")
 	}
 }

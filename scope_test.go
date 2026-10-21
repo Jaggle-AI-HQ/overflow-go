@@ -237,3 +237,57 @@ func TestScopeConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestScopeCloneIsIndependent(t *testing.T) {
+	s := NewScope()
+	s.SetTag("a", "1")
+	s.SetContext("ctx", "v")
+	s.SetUser(User{ID: "u1"})
+	s.SetFingerprint([]string{"fp"})
+	s.AddBreadcrumb(&Breadcrumb{Message: "first"}, 10)
+
+	c := s.Clone()
+	c.SetTag("a", "2")
+	c.SetTag("b", "3")
+	c.SetContext("ctx", "changed")
+	c.SetUser(User{ID: "u2"})
+	c.AddBreadcrumb(&Breadcrumb{Message: "second"}, 10)
+
+	orig := NewEvent()
+	s.ApplyToEvent(orig)
+	if orig.Tags["a"] != "1" || orig.Tags["b"] != "" {
+		t.Errorf("original tags changed: %v", orig.Tags)
+	}
+	if orig.Contexts["ctx"] != "v" {
+		t.Errorf("original context changed: %v", orig.Contexts)
+	}
+	if orig.User == nil || orig.User.ID != "u1" {
+		t.Errorf("original user changed: %+v", orig.User)
+	}
+	if len(orig.Breadcrumbs) != 1 {
+		t.Errorf("original breadcrumbs = %d, want 1", len(orig.Breadcrumbs))
+	}
+
+	cloned := NewEvent()
+	c.ApplyToEvent(cloned)
+	if cloned.Tags["a"] != "2" || cloned.Tags["b"] != "3" {
+		t.Errorf("clone tags = %v", cloned.Tags)
+	}
+	if cloned.User == nil || cloned.User.ID != "u2" {
+		t.Errorf("clone user = %+v", cloned.User)
+	}
+	if len(cloned.Breadcrumbs) != 2 || cloned.Fingerprint[0] != "fp" {
+		t.Errorf("clone breadcrumbs=%v fingerprint=%v", cloned.Breadcrumbs, cloned.Fingerprint)
+	}
+}
+
+func TestScopeApplyToEventCopiesUser(t *testing.T) {
+	s := NewScope()
+	s.SetUser(User{ID: "u1"})
+	ev := NewEvent()
+	s.ApplyToEvent(ev)
+	s.SetUser(User{ID: "u2"})
+	if ev.User.ID != "u1" {
+		t.Errorf("event user changed after SetUser: %q", ev.User.ID)
+	}
+}

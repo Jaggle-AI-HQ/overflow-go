@@ -1,6 +1,9 @@
 package overflow
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 // Hub is the central point for managing the SDK client and scope.
 type Hub struct {
@@ -28,6 +31,38 @@ func NewHub(options ClientOptions) (*Hub, error) {
 	}
 
 	return &Hub{client: client, scope: scope}, nil
+}
+
+// Clone returns a hub that shares this hub's client but has its own copy of
+// the scope. The HTTP middlewares clone the global hub for each request.
+func (h *Hub) Clone() *Hub {
+	return &Hub{client: h.client, scope: h.scope.Clone()}
+}
+
+type hubCtxKey struct{}
+
+// SetHubOnContext returns a copy of ctx that carries hub.
+func SetHubOnContext(ctx context.Context, hub *Hub) context.Context {
+	return context.WithValue(ctx, hubCtxKey{}, hub)
+}
+
+// GetHubFromContext returns the hub stored on ctx, or nil if there is none.
+// Inside a request handled by HTTPMiddleware or ginoverflow.Middleware this is
+// the request's own hub, which carries its breadcrumbs and request data.
+func GetHubFromContext(ctx context.Context) *Hub {
+	if ctx == nil {
+		return nil
+	}
+	hub, _ := ctx.Value(hubCtxKey{}).(*Hub)
+	return hub
+}
+
+// CurrentHub returns the hub stored on ctx, falling back to the global hub.
+func CurrentHub(ctx context.Context) *Hub {
+	if hub := GetHubFromContext(ctx); hub != nil {
+		return hub
+	}
+	return GetHub()
 }
 
 // Client returns the hub's client.
