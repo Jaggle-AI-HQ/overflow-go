@@ -2,9 +2,11 @@ package overflow
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -282,17 +284,19 @@ func TestTransactionFinishAutoFinishesSpans(t *testing.T) {
 }
 
 func TestTransactionFinishSendsEnvelope(t *testing.T) {
-	// Use a real HTTP test server to verify the transaction is sent
+	received := make(chan []byte, 1)
 	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if _, err := readBody(r); err != nil {
+		body, err := readBody(r)
+		if err != nil {
 			t.Errorf("failed to read body: %v", err)
 		}
+		received <- body
 		w.WriteHeader(http.StatusOK)
 	})
 	defer server.Close()
 
 	hub, _ := NewHub(ClientOptions{
-		DSN:              "https://testkey@" + server.Listener.Addr().String() + "/api/ingest",
+		DSN:              "http://testkey@" + server.Listener.Addr().String() + "/api/ingest",
 		TracesSampleRate: 1.0,
 	})
 	globalHub = hub
@@ -304,11 +308,57 @@ func TestTransactionFinishSendsEnvelope(t *testing.T) {
 	child.Finish()
 	txn.Finish()
 
-	// Give async send time to complete
-	time.Sleep(100 * time.Millisecond)
+	// Flush waits for queued transactions as well as events.
+	if !hub.Client().Flush(2 * time.Second) {
+		t.Fatal("Flush should return once the transaction is delivered")
+	}
+	select {
+	case body := <-received:
+		var env TransactionEnvelope
+		if err := json.Unmarshal(body, &env); err != nil {
+			t.Fatalf("invalid envelope: %v", err)
+		}
+		if env.Name != "GET /test" || len(env.Spans) != 1 {
+			t.Errorf("envelope = %+v", env)
+		}
+	default:
+		t.Fatal("server did not receive the transaction")
+	}
+}
 
-	// The envelope is sent via SendRaw in a goroutine, so we need to wait
-	// We just verify the transaction was structured correctly in unit tests above
+func TestTransactionFinishDoesNotSpawnGoroutinesWhenBackedUp(t *testing.T) {
+	release := make(chan struct{})
+	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+	})
+	defer server.Close()
+	defer close(release)
+
+	hub, _ := NewHub(ClientOptions{
+		DSN:              "http://testkey@" + server.Listener.Addr().String() + "/api/ingest",
+		TracesSampleRate: 1.0,
+	})
+	globalHub = hub
+	t.Cleanup(func() { globalHub = nil })
+
+	before := runtime.NumGoroutine()
+	for i := 0; i < 2000; i++ {
+		_, txn := StartTransaction(context.Background(), "GET /slow", "http.server")
+		txn.Finish()
+	}
+	// One request is in flight (plus its connection goroutines); the rest are
+	// queued or dropped, not each parked in its own goroutine.
+	if grown := runtime.NumGoroutine() - before; grown > 20 {
+		t.Errorf("goroutines grew by %d for 2000 transactions", grown)
+	}
+	ht := hub.Client().transport.(*HTTPTransport)
+	ht.mu.Lock()
+	pending := ht.pending
+	ht.mu.Unlock()
+	if pending > transportBufferSize+1 {
+		t.Errorf("pending = %d, want at most %d", pending, transportBufferSize+1)
+	}
 }
 
 func newTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {

@@ -233,7 +233,8 @@ func (t *Transaction) Finish() {
 			return
 		}
 		if ht, ok := t.hub.client.transport.(*HTTPTransport); ok {
-			go ht.SendRaw(body)
+			// Queued for a background worker; dropped when the queue is full.
+			ht.sendRawAsync(body)
 		}
 	}
 }
@@ -241,8 +242,9 @@ func (t *Transaction) Finish() {
 // StartTransaction creates a new transaction. It applies trace sampling based on
 // TracesSampleRate - if the request is not sampled, it returns nil for the transaction.
 // Call Finish() on the returned transaction (if non-nil) to send it.
+// It uses the hub stored on ctx, if any, and the global hub otherwise.
 func StartTransaction(ctx context.Context, name, op string) (context.Context, *Transaction) {
-	hub := GetHub()
+	hub := CurrentHub(ctx)
 
 	// Apply trace sampling
 	if hub != nil {

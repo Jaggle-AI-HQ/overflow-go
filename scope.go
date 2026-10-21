@@ -73,6 +73,29 @@ func (s *Scope) AddBreadcrumb(breadcrumb *Breadcrumb, maxBreadcrumbs int) {
 	}
 }
 
+// Clone returns a copy of the scope. Changes to the copy do not affect the
+// original, so a per-request clone can be written without contending with or
+// leaking into other requests.
+func (s *Scope) Clone() *Scope {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := &Scope{
+		tags:        make(map[string]string, len(s.tags)),
+		contexts:    make(map[string]any, len(s.contexts)),
+		user:        s.user,
+		fingerprint: append([]string(nil), s.fingerprint...),
+		breadcrumbs: append([]Breadcrumb(nil), s.breadcrumbs...),
+		request:     s.request,
+	}
+	for k, v := range s.tags {
+		c.tags[k] = v
+	}
+	for k, v := range s.contexts {
+		c.contexts[k] = v
+	}
+	return c
+}
+
 // Clear resets the scope to empty.
 func (s *Scope) Clear() {
 	s.mu.Lock()
@@ -113,15 +136,18 @@ func (s *Scope) ApplyToEvent(event *Event) {
 	}
 
 	if !s.user.IsEmpty() && event.User == nil {
-		event.User = &s.user
+		user := s.user
+		event.User = &user
 	}
 
 	if len(s.fingerprint) > 0 && len(event.Fingerprint) == 0 {
-		event.Fingerprint = s.fingerprint
+		event.Fingerprint = append([]string(nil), s.fingerprint...)
 	}
 
 	if len(s.breadcrumbs) > 0 {
-		event.Breadcrumbs = append(s.breadcrumbs, event.Breadcrumbs...)
+		breadcrumbs := make([]Breadcrumb, 0, len(s.breadcrumbs)+len(event.Breadcrumbs))
+		breadcrumbs = append(breadcrumbs, s.breadcrumbs...)
+		event.Breadcrumbs = append(breadcrumbs, event.Breadcrumbs...)
 	}
 
 	if s.request != nil && event.Request == nil {

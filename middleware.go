@@ -24,11 +24,17 @@ func (w *statusWriter) WriteHeader(code int) {
 //	mux := http.NewServeMux()
 //	mux.HandleFunc("/", handler)
 //	http.ListenAndServe(":8080", overflow.HTTPMiddleware()(mux))
+//
+// Each request gets its own clone of the global hub, stored on the request
+// context; read it with GetHubFromContext(r.Context()).
 func HTTPMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
 			hub := GetHub()
 			if hub != nil {
+				hub = hub.Clone()
+				ctx = SetHubOnContext(ctx, hub)
 				hub.AddBreadcrumb(&Breadcrumb{
 					Type:     "http",
 					Category: "request",
@@ -43,7 +49,6 @@ func HTTPMiddleware() func(http.Handler) http.Handler {
 			}
 
 			// Start a transaction if tracing is enabled (sampling is handled by StartTransaction)
-			ctx := r.Context()
 			name := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
 			ctx, txn := StartTransaction(ctx, name, "http.server")
 			if txn != nil {
@@ -76,8 +81,9 @@ func HTTPMiddleware() func(http.Handler) http.Handler {
 						}
 						hub.Scope().ApplyToEvent(event)
 						hub.Client().ApplyOptions(event)
+						// Queued for the transport's worker; the server keeps
+						// running, so the request does not wait for delivery.
 						hub.Client().Send(event)
-						hub.Client().Flush(2 * time.Second)
 					}
 
 					if txn != nil {

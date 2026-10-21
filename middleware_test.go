@@ -1,10 +1,13 @@
 package overflow
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestFlattenHeaders(t *testing.T) {
@@ -94,6 +97,8 @@ func TestHTTPMiddlewareAddsBreadcrumb(t *testing.T) {
 	t.Cleanup(func() { globalHub = nil })
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture an event on the request's hub to see the breadcrumbs
+		GetHubFromContext(r.Context()).CaptureMessage("test", LevelInfo)
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -102,9 +107,6 @@ func TestHTTPMiddlewareAddsBreadcrumb(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	middleware.ServeHTTP(rec, req)
-
-	// Capture an event to see the breadcrumbs
-	CaptureMessage("test", LevelInfo)
 
 	if len(mt.events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(mt.events))
@@ -251,5 +253,119 @@ func TestHTTPMiddlewareWithTracing(t *testing.T) {
 	}
 	if txnFromCtx.op != "http.server" {
 		t.Errorf("transaction op = %q", txnFromCtx.op)
+	}
+}
+
+// syncTransport records events and is safe for concurrent use.
+type syncTransport struct {
+	mu     sync.Mutex
+	events []*Event
+}
+
+func (m *syncTransport) Send(event *Event) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, event)
+}
+
+func (m *syncTransport) Flush(timeout time.Duration) bool { return true }
+
+func TestHTTPMiddlewareKeepsRequestDataOffGlobalScope(t *testing.T) {
+	mt := &syncTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+	})
+	globalHub = hub
+	t.Cleanup(func() { globalHub = nil })
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqHub := GetHubFromContext(r.Context())
+		if reqHub == nil || reqHub == hub {
+			t.Error("request should carry its own hub")
+			return
+		}
+		reqHub.Scope().SetTag("path", r.URL.Path)
+		reqHub.CaptureMessage(r.URL.Path, LevelInfo)
+	})
+	middleware := HTTPMiddleware()(handler)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req := httptest.NewRequest("GET", fmt.Sprintf("/r/%d", i), nil)
+			middleware.ServeHTTP(httptest.NewRecorder(), req)
+		}(i)
+	}
+	wg.Wait()
+
+	mt.mu.Lock()
+	events := append([]*Event(nil), mt.events...)
+	mt.mu.Unlock()
+	if len(events) != 20 {
+		t.Fatalf("expected 20 events, got %d", len(events))
+	}
+	for _, ev := range events {
+		if ev.Tags["path"] != ev.Message {
+			t.Errorf("event %q has tag path=%q from another request", ev.Message, ev.Tags["path"])
+		}
+		if len(ev.Breadcrumbs) != 1 || ev.Breadcrumbs[0].Message != "GET "+ev.Message {
+			t.Errorf("event %q has breadcrumbs %+v, want only its own request", ev.Message, ev.Breadcrumbs)
+		}
+	}
+
+	CaptureMessage("global", LevelInfo)
+	mt.mu.Lock()
+	global := mt.events[len(mt.events)-1]
+	mt.mu.Unlock()
+	if len(global.Breadcrumbs) != 0 || global.Tags["path"] != "" {
+		t.Errorf("global scope picked up request data: tags=%v breadcrumbs=%v", global.Tags, global.Breadcrumbs)
+	}
+}
+
+// slowFlushTransport records events and blocks in Flush, like an HTTP
+// transport whose server is slow.
+type slowFlushTransport struct {
+	syncTransport
+	flushes int
+}
+
+func (m *slowFlushTransport) Flush(timeout time.Duration) bool {
+	m.mu.Lock()
+	m.flushes++
+	m.mu.Unlock()
+	time.Sleep(timeout)
+	return false
+}
+
+func TestHTTPMiddlewarePanicDoesNotWaitForDelivery(t *testing.T) {
+	mt := &slowFlushTransport{}
+	hub, _ := NewHub(ClientOptions{
+		DSN:       "https://testkey@localhost:9999/api/ingest",
+		Transport: mt,
+	})
+	globalHub = hub
+	t.Cleanup(func() { globalHub = nil })
+
+	middleware := HTTPMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	}))
+
+	start := time.Now()
+	func() {
+		defer func() { recover() }()
+		middleware.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/crash", nil))
+	}()
+
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Errorf("panicking request took %v", elapsed)
+	}
+	if mt.flushes != 0 {
+		t.Errorf("middleware flushed %d times, want 0", mt.flushes)
+	}
+	if len(mt.events) != 1 {
+		t.Errorf("expected 1 event, got %d", len(mt.events))
 	}
 }

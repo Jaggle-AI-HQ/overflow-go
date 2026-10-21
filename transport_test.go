@@ -1,10 +1,13 @@
 package overflow
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -34,9 +37,8 @@ func TestHTTPTransportSendAndFlush(t *testing.T) {
 	event.Message = "hello"
 	tr.Send(event)
 
-	// Close the buffer to let the worker finish
-	close(tr.buffer)
-	tr.wg.Wait()
+	// Close the queues to let the workers finish
+	closeTransport(tr)
 
 	if received == nil {
 		t.Fatal("server should have received an event")
@@ -57,8 +59,7 @@ func TestHTTPTransportSendHeaders(t *testing.T) {
 
 	tr := NewHTTPTransport(server.URL, "testkey")
 	tr.Send(NewEvent())
-	close(tr.buffer)
-	tr.wg.Wait()
+	closeTransport(tr)
 
 	if gotContentType != "application/json" {
 		t.Errorf("Content-Type = %q, want %q", gotContentType, "application/json")
@@ -79,8 +80,7 @@ func TestHTTPTransportEndpoint(t *testing.T) {
 
 	tr := NewHTTPTransport(server.URL, "mykey123")
 	tr.Send(NewEvent())
-	close(tr.buffer)
-	tr.wg.Wait()
+	closeTransport(tr)
 
 	if gotPath != "/mykey123/store" {
 		t.Errorf("path = %q, want %q", gotPath, "/mykey123/store")
@@ -127,9 +127,8 @@ func TestHTTPTransportSendRaw(t *testing.T) {
 		t.Errorf("body = %q, want %q", gotBody, payload)
 	}
 
-	// Clean up worker
-	close(tr.buffer)
-	tr.wg.Wait()
+	// Clean up workers
+	closeTransport(tr)
 }
 
 func TestHTTPTransportFlushTimeout(t *testing.T) {
@@ -148,6 +147,147 @@ func TestHTTPTransportFlushTimeout(t *testing.T) {
 	// We just verify it doesn't panic.
 	_ = result
 
+	closeTransport(tr)
+}
+
+// closeTransport stops the transport's workers after they drain their queues.
+func closeTransport(tr *HTTPTransport) {
 	close(tr.buffer)
+	close(tr.raw)
 	tr.wg.Wait()
+}
+
+func TestHTTPTransportFlushReturnsWhenIdle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tr := NewHTTPTransport(server.URL, "key")
+	defer closeTransport(tr)
+
+	start := time.Now()
+	if !tr.Flush(2 * time.Second) {
+		t.Fatal("Flush with nothing queued should return true")
+	}
+	if time.Since(start) > 100*time.Millisecond {
+		t.Errorf("Flush with nothing queued took %v", time.Since(start))
+	}
+}
+
+func TestHTTPTransportFlushWaitsForInFlightSends(t *testing.T) {
+	var received atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		received.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tr := NewHTTPTransport(server.URL, "key")
+	defer closeTransport(tr)
+
+	tr.Send(NewEvent())
+	tr.Send(NewEvent())
+	tr.sendRawAsync([]byte(`{"type":"transaction"}`))
+
+	start := time.Now()
+	if !tr.Flush(2 * time.Second) {
+		t.Fatal("Flush should return true once the sends finish")
+	}
+	if got := received.Load(); got != 3 {
+		t.Errorf("server received %d requests before Flush returned, want 3", got)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("Flush took %v, want it to return when the sends finish", elapsed)
+	}
+
+	// A second Flush after everything is delivered returns immediately.
+	start = time.Now()
+	if !tr.Flush(2 * time.Second) {
+		t.Fatal("second Flush should return true")
+	}
+	if time.Since(start) > 100*time.Millisecond {
+		t.Errorf("second Flush took %v", time.Since(start))
+	}
+}
+
+func TestHTTPTransportFlushTimesOutWhileSending(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	defer close(release)
+
+	tr := NewHTTPTransport(server.URL, "key")
+	tr.Send(NewEvent())
+
+	if tr.Flush(50 * time.Millisecond) {
+		t.Error("Flush should time out while a send is blocked")
+	}
+}
+
+func TestHTTPTransportDroppedEventDoesNotBlockFlush(t *testing.T) {
+	tr := &HTTPTransport{
+		host:      "http://127.0.0.1:0",
+		publicKey: "key",
+		client:    &http.Client{Timeout: time.Second},
+		buffer:    make(chan *Event), // unbuffered and never drained
+	}
+
+	tr.Send(NewEvent())
+	if tr.sendRawAsync([]byte(`{}`)) {
+		t.Error("sendRawAsync without a raw queue should report a drop")
+	}
+	if !tr.Flush(10 * time.Millisecond) {
+		t.Error("dropped items must not count as pending")
+	}
+}
+
+func TestHTTPTransportRawQueueDropsWhenFull(t *testing.T) {
+	tr := &HTTPTransport{
+		host:      "http://127.0.0.1:0",
+		publicKey: "key",
+		client:    &http.Client{Timeout: time.Second},
+		raw:       make(chan []byte, 2), // no worker draining
+	}
+
+	if !tr.sendRawAsync([]byte(`1`)) || !tr.sendRawAsync([]byte(`2`)) {
+		t.Fatal("first two payloads should be queued")
+	}
+	if tr.sendRawAsync([]byte(`3`)) {
+		t.Error("third payload should be dropped when the queue is full")
+	}
+	if tr.pending != 2 {
+		t.Errorf("pending = %d, want 2", tr.pending)
+	}
+}
+
+func TestHTTPTransportReusesConnections(t *testing.T) {
+	var mu sync.Mutex
+	conns := map[string]bool{}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		conns[r.RemoteAddr] = true
+		mu.Unlock()
+		// A body larger than the client's read-ahead, so it is only reusable when drained.
+		w.Write(bytes.Repeat([]byte("x"), 32<<10))
+	}))
+	server.Start()
+	defer server.Close()
+
+	tr := NewHTTPTransport(server.URL, "key")
+	defer closeTransport(tr)
+
+	for i := 0; i < 5; i++ {
+		tr.SendRaw([]byte(`{}`))
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(conns) != 1 {
+		t.Errorf("used %d connections for 5 sequential sends, want 1", len(conns))
+	}
 }

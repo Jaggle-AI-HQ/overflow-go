@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-const Version = "0.3.0"
+const Version = "0.5.0"
 
 var globalHub *Hub
 
