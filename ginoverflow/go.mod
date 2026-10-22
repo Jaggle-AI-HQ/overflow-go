@@ -1,6 +1,6 @@
 module github.com/Jaggle-AI-HQ/overflow-go/ginoverflow
 
-go 1.24
+go 1.27
 
 require (
 	github.com/Jaggle-AI-HQ/overflow-go v0.5.0
