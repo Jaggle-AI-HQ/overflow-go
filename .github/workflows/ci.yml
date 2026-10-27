@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build & Vet
-    runs-on: [self-hosted, jaggle-dev]
+    runs-on: [self-hosted, jaggle-ci]
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +38,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: [self-hosted, jaggle-dev]
+    runs-on: [self-hosted, jaggle-ci]
     steps:
       - uses: actions/checkout@v4
 
